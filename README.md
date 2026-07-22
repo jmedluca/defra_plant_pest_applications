@@ -1,785 +1,657 @@
-Plant Pest Dashboard and Simulator
-User Guide
+# Plant Pest Dashboard and Simulator
 
+## Overview
 
-# 1. Summary
+This project contains two applications that run locally on your computer:
 
-### This folder contains two local applications
+1. **Plant Pest Dashboard** — uses real survey and host data to estimate prevalence trends and create a PDF report.
+2. **Plant Pest Simulator** — uses simulated data to test how survey design and epidemic conditions affect estimation reliability.
 
-Both applications run locally on your own computer. They open in a web browser, but the browser is only used as the screen for the application.
+Both applications open in a web browser, but all processing takes place on your computer.
 
-The main purpose of the package is to estimate plant pest prevalence trends from real survey data, and explore survey and analysis designs that affect estimation reliability.
+---
 
-## 1. Plant Pest Dashboard
-   This application is used with real survey data. It loads survey polygons and host coverage polygons, estimates prevalence over time, fits two trend methods, and creates a printable PDF report.
-
-## 2. Plant Pest Simulator
-   This is a decision support tool used with simulated data. It creates a fake plant pest epidemic. It then tests how well different survey designs and analysis methods recover that true epidemic state.
-
-# 2. What the two applications are for
+## What the applications do
 
 ### Plant Pest Dashboard
 
-Use this when you have real GIS survey polygons and host coverage polygon data.
+Use the Dashboard with real GIS data, including:
 
-### It answers questions such as
+- survey polygons;
+- host coverage polygons; and
+- optional supporting layers, such as SPHN polygons.
 
-- What prevalence was estimated in each survey year?
-- Does prevalence appear to be increasing or decreasing?
-- Was the observed survey effort close to a required effort benchmark?
+The Dashboard can help answer:
+
+- What was the estimated prevalence in each survey year?
+- Is prevalence increasing or decreasing?
+- How do the Change Method and Regression Method compare?
+- Was the observed survey effort close to the indicative required effort?
 
 ### Plant Pest Simulator
 
-Use this when you want to test survey designs before using them in the real world.
+Use the Simulator to test survey and analysis choices before applying them in practice.
 
-### It answers questions such as
+It can explore questions such as:
 
-- What happens if infection is highly clustered?
-- What happens if surveys are targeted toward suspected infected areas?
-- What happens if the same places are surveyed again each year?
-- How many samples are needed under different assumptions?
-- Which survey design gives more accurate estimates under the same simulated epidemic?
+- What happens when infection is highly clustered?
+- What happens when surveys target suspected infected areas?
+- What happens when the same hosts are sampled repeatedly?
+- How many samples are required under different assumptions?
+- Which survey design gives more reliable estimates?
 - How well do the Change Method and Regression Method recover the true prevalence change?
 
-The simulator is not a disease forecast. It is a controlled testing tool. It creates synthetic examples so that the true epidemic is known.
+The Simulator is a controlled testing tool, not a disease forecast.
 
+---
 
-# 3. What you need before starting
+## Requirements
 
-## You need
+You need:
 
-### 1. A Windows computer.
-### 2. Internet access for the first setup.
-### 3. Permission to install Python if it is not already installed.
-### 4. This full folder downloaded or copied onto your computer.
+- a Windows computer;
+- internet access for the first setup;
+- permission to install Python if required; and
+- the complete project folder.
 
-### Recommended folder location
+A recommended location is:
 
+```text
 C:\Users\YourName\Documents\plant_pest_dashboard
+```
 
-Avoid running the applications from inside a ZIP file. Always extract the folder first.
+Do not run the applications from inside a ZIP file. Extract the project first.
 
-Avoid moving only individual files out of this folder. The applications expect the Python files, batch files, requirements file, and data folders to stay together.
+Keep the Python files, batch files, requirements file, and other project files together.
 
+---
 
-# 4. How to install Python
+## Shapefile folder setup
 
-You only need to do this once on each computer.
+The project package does not include DEFRA shapefiles.
 
-### 1. Open your web browser.
-### 2. Go to:
+Place your own folder containing the required shapefiles in the same directory as the project files. The applications can then find the data automatically.
 
-   https://www.python.org/downloads/
+Example structure:
 
-### 3. Download Python 3.11 or later.
-### 4. Open the downloaded installer.
-### 5. On the first installer screen, tick the box called:
+```text
+plant_pest_dashboard/
+├── plant_pest_dashboard.py
+├── plant_pest_simulator.py
+├── plant_pest_backend.py
+├── Setup.bat
+├── Run Dashboard.bat
+├── Run Simulator.bat
+├── requirements.txt
+└── your_shapefile_folder/
+```
 
-   Add Python to PATH
+The shapefile folder may contain:
 
-### 6. Click Install Now.
-### 7. Wait for the installation to finish.
-### 8. Close the installer.
+- survey polygons;
+- host coverage polygons;
+- SPHN polygons; and
+- other supporting GIS layers.
 
-### Important
+A shapefile normally includes several files with the same name:
 
-The "Add Python to PATH" box is important. It lets the setup file find Python automatically.
+```text
+example.shp
+example.shx
+example.dbf
+example.prj
+example.cpg
+```
 
-If Python is already installed, you can try running Setup.bat first. If setup cannot find Python, install Python using the steps above.
+Keep all of these files together. Do not move only the `.shp` file.
 
+---
 
-# 5. How to download the package from GitHub
+## Installing Python
 
-### If you are downloading from GitHub
+Python only needs to be installed once.
 
-### 1. Open the GitHub page for the project.
-### 2. Click the green Code button.
-### 3. Click Download ZIP.
-### 4. Save the ZIP file.
-### 5. Right-click the ZIP file.
-### 6. Click Extract All.
-### 7. Move the extracted folder to a simple location, such as Documents.
+1. Go to `https://www.python.org/downloads/`.
+2. Download Python 3.11 or later.
+3. Open the installer.
+4. Tick **Add Python to PATH**.
+5. Select **Install Now**.
+6. Wait for installation to finish.
 
-Do not run Setup.bat while the files are still inside the ZIP file.
+The **Add Python to PATH** option allows the setup script to find Python automatically.
 
+If Python is already installed, try running `Setup.bat` first.
 
-# 6. First-time setup
+---
 
-You only need to run setup once after downloading the folder.
+## Downloading from GitHub
 
-### 1. Open the plant_pest_dashboard folder.
-### 2. Double-click Setup.bat.
-### 3. A black command window will open.
-### 4. The setup will create a local Python environment inside this folder.
-### 5. The setup will install all Python packages listed in requirements.txt.
-### 6. Wait until it finishes.
+1. Open the project page on GitHub.
+2. Select **Code**.
+3. Select **Download ZIP**.
+4. Save and extract the ZIP file.
+5. Move the extracted folder to a convenient location.
 
-The first setup may take several minutes.
+Do not run `Setup.bat` while the files are still inside the ZIP archive.
 
-### When setup has finished, you should see
+---
 
+## First-time setup
+
+Run the setup once after downloading the project.
+
+1. Open the project folder.
+2. Double-click `Setup.bat`.
+3. A command window will open.
+4. The script will create a local Python environment.
+5. It will install the packages listed in `requirements.txt`.
+6. Wait until setup is complete.
+
+You should then see:
+
+```text
 Setup complete.
 Use "Run Dashboard.bat" or "Run Simulator.bat".
+```
 
-Then press any key to close the window.
+Common causes of setup failure include:
 
-If setup fails, read the message in the black command window. Common causes are:
+- Python is not installed;
+- Python was installed without **Add Python to PATH**;
+- internet access is unavailable;
+- a firewall or proxy blocks package downloads; or
+- the user does not have permission to install software.
 
-- Python is not installed.
-- Python was installed without "Add Python to PATH".
-- The computer has no internet access.
-- A firewall or proxy is blocking Python package downloads.
-- The user does not have permission to install software.
+---
 
+## Running the Dashboard
 
-# 7. How to open the Dashboard
+1. Open the project folder.
+2. Double-click `Run Dashboard.bat`.
+3. Keep the command window open.
+4. The Dashboard should open in your browser.
 
-### 1. Open the plant_pest_dashboard folder.
-### 2. Double-click Run Dashboard.bat.
-### 3. A black command window will open.
-### 4. Your web browser should open automatically.
-### 5. The Dashboard uses this local address:
+Local address:
 
-   http://127.0.0.1:8000
+```text
+http://127.0.0.1:8000
+```
 
-If the browser does not open automatically, copy the address above into your browser.
+If the browser does not open automatically, enter the address manually.
 
-Do not close the black command window while using the Dashboard. If you close it, the application stops.
+To stop the Dashboard, close the browser tab and then close the command window.
 
-### When you are finished
+---
 
-### 1. Close the browser tab.
-### 2. Close the black command window.
+## Running the Simulator
 
+1. Open the project folder.
+2. Double-click `Run Simulator.bat`.
+3. Keep the command window open.
+4. The Simulator should open in your browser.
 
-# 8. How to open the Simulator
+Local address:
 
-### 1. Open the plant_pest_dashboard folder.
-### 2. Double-click Run Simulator.bat.
-### 3. A black command window will open.
-### 4. Your web browser should open automatically.
-### 5. The Simulator uses this local address:
+```text
+http://127.0.0.1:8001
+```
 
-   http://127.0.0.1:8001
+The Dashboard and Simulator use different addresses and can run at the same time.
 
-If the browser does not open automatically, copy the address above into your browser.
+---
 
-Do not close the black command window while using the Simulator. If you close it, the application stops.
+## Main project files
 
-The Dashboard and Simulator use different local addresses. This means they can both be open at the same time if needed.
+| File | Purpose |
+|---|---|
+| `Setup.bat` | Creates the local Python environment and installs packages. |
+| `Run Dashboard.bat` | Starts the Dashboard. |
+| `Run Simulator.bat` | Starts the Simulator. |
+| `requirements.txt` | Lists required Python packages. |
+| `plant_pest_dashboard.py` | Main application for real survey data. |
+| `plant_pest_simulator.py` | Main simulation application. |
+| `plant_pest_backend.py` | Shared simulation and calculation code. |
+| `README.md` | User guide. |
 
+Place the user-provided shapefile folder beside these files.
 
-# 9. What this folder contains
+---
 
-## Main files
+# Dashboard guide
 
-### 1. Setup.bat
-   Runs the first-time setup. It creates the local Python environment and installs the required packages.
+## Main sections
 
-### 2. Run Dashboard.bat
-   Opens the Plant Pest Dashboard.
+The Dashboard has three main sections:
 
-### 3. Run Simulator.bat
-   Opens the Plant Pest Simulator.
+1. **Home**
+2. **Data Viewer**
+3. **Results**
 
-### 4. requirements.txt
-   Lists the Python packages needed by the applications.
+## Home
 
-### 5. plant_pest_dashboard.py
-   The main dashboard application for real survey data.
+Use the Home page to load the required GIS data.
 
-### 6. plant_pest_simulator.py
-   The simulator application for synthetic experiments.
+Typical workflow:
 
-### 7. plant_pest_backend.py
-   Shared simulator and calculation code used by the applications.
+1. Open the Dashboard.
+2. Check the displayed file paths.
+3. Select or confirm the required layers.
+4. Press **Load Data**.
+5. Open **Data Viewer** or **Results**.
 
-### 8. DEFRA_data
-   Default data folder. This may contain survey polygons, host coverage polygons, SPHN polygons, and other supporting files.
+The Dashboard can load:
 
-### 9. README.txt
-   This guide.
+- survey polygons;
+- host coverage polygons; and
+- optional SPHN polygons.
 
-### Important shapefile note
+If a path is missing or incorrect, that layer may not load.
 
-A shapefile is usually made of several files with the same name but different endings, such as:
+## Data Viewer
 
-- .shp
-- .shx
-- .dbf
-- .prj
-- .cpg
+Use the Data Viewer to inspect the loaded GIS layers.
 
-Keep these files together. Do not move only the .shp file on its own.
+Check:
 
+- whether survey polygons loaded correctly;
+- whether host coverage polygons loaded correctly;
+- which year is displayed;
+- whether survey and host polygons overlap; and
+- whether the survey pattern appears broad or targeted.
 
-# 10. Dashboard user guide
+Use the year control, map layers, and zoom tools before generating results.
 
-## The Dashboard has three main windows
+## Results
 
-### 1. Home
-### 2. Data Viewer
-### 3. Results
+The Results page produces prevalence estimates and report outputs.
 
+Typical workflow:
 
-## 10.1 Home window
+1. Load the data.
+2. Open **Results**.
+3. Select **Generate Results**.
+4. Review the tables and plots.
+5. Adjust settings if required.
+6. Select **Results to PDF**.
 
-### Purpose
+Outputs include:
 
-The Home window loads the data used by the Dashboard.
-
-### Typical steps
-
-### 1. Open the Dashboard.
-### 2. Check the file paths shown on the Home page.
-### 3. Press Load Data.
-### 4. Wait until loading finishes.
-### 5. Go to Data Viewer to inspect the map, or go to Results to generate estimates.
-
-### The Home page can load
-
-### 1. Survey polygons
-   These are the areas that were surveyed.
-
-### 2. Host coverage polygons
-   These are the areas where the host plant is present.
-
-### 3. SPHN polygons
-   These are optional polygons for the map for SPHNs that have been issued.
-
-If a path is blank or incorrect, that layer may not load. The app should still open, but some map layers or results may be missing.
-
-
-## 10.2 Data Viewer window
-
-### Purpose
-
-The Data Viewer lets you inspect the loaded polygon data on an interactive map.
-
-### Use this window to check
-
-- whether survey polygons loaded correctly,
-- whether host coverage polygons loaded correctly,
-- which survey year is being displayed,
-- whether survey polygons overlap with host coverage polygons,
-- whether the survey pattern looks broad or targeted.
-
-### Typical steps
-
-### 1. Load data on the Home page.
-### 2. Open the Data Viewer window.
-### 3. Use the year slider to choose a survey year.
-### 4. Turn map layers on or off using the layer control.
-### 5. Zoom in to inspect survey and host polygons.
-
-This window is mainly for checking the data visually before producing results.
-
-
-## 10.3 Results window
-
-### Purpose
-
-The Results window converts the loaded survey data into prevalence estimates and a PDF report.
-
-### Typical steps
-
-### 1. Load data on the Home page.
-### 2. Open the Results window.
-### 3. Press Generate Results.
-### 4. Review the plots and tables.
-### 5. If needed, open Settings and change how the data are interpreted.
-### 6. Press Results to PDF to create the report.
-
-### The Results window produces
-
-- estimated prevalence over time,
-- Change Method results,
-- Regression Method results,
-- yearly survey summaries,
-- observed effort compared with indicative required effort,
+- estimated prevalence over time;
+- Change Method results;
+- Regression Method results;
+- yearly survey summaries;
+- observed effort compared with indicative required effort; and
 - a printable PDF report.
 
+## Results settings
 
-## 10.4 Results settings
+### Survey outcomes
 
-The settings menu controls how the real data are interpreted.
+These settings determine which labels are treated as positive, negative, or ignored.
 
-### Survey data settings
+Examples:
 
-These settings decide which survey outcome labels count as disease-positive or disease-negative.
+- `Confirmed infected` may be positive;
+- `No evidence of P. ramorum` may be negative;
+- `Awaiting site visit` should usually be ignored.
 
-### Example
+### Host landscape
 
-- "Confirmed infected" may count as positive.
-- "No evidence of P ramorum" may count as negative.
-- "Awaiting site visit" should usually be ignored because it does not say whether disease is present or absent.
+These settings determine which polygons form the host population.
 
-### Host landscape settings
-
-These settings decide which host polygons are included in the host population.
-
-For simple host coverage files, use all host polygons.
-
-If a future file contains several species or host types, a user can choose which column and values represent the host plant of interest.
+If the file contains several species or host categories, select the relevant column and values.
 
 ### Host density
 
 Host density converts mapped area into an estimated number of hosts.
 
-### Example
+For example, at 2,500 hosts per km², an area of 1 km² is treated as containing approximately 2,500 hosts.
 
-If host density is 2,500 hosts per km2, then a 1 km2 host area is treated as containing about 2,500 hosts.
+### Unmatched survey polygons
 
-### Include unmatched survey polygons
+Some survey polygons may not overlap the host coverage layer.
 
-Some survey polygons may not fall inside the host coverage polygons. This can happen if the host coverage file is incomplete.
+If **Include unmatched survey polygons** is enabled, these areas are treated as additional host areas.
 
-If this option is switched on, those unmatched survey polygons are treated as additional host areas rather than being ignored.
+### Statistical settings
 
-### Shared statistical settings
+These affect indicative survey-effort benchmarks. They do not show that historical survey data followed the assumptions of the sample-size methods.
 
-These settings affect the indicative effort benchmarks. They are not proof that the historical survey design was random or ideal.
+### Regression settings
 
-### Regression Method settings
+These control the model used to estimate the prevalence trend.
 
-These settings control the model used to fit the prevalence trend.
+## How the Dashboard estimates prevalence
 
+The Dashboard:
 
-## 10.5 How the Dashboard estimates prevalence
+1. loads the host coverage polygons;
+2. estimates host abundance from area and host density;
+3. loads survey polygons for each year;
+4. identifies overlap between survey and host polygons;
+5. classifies outcomes as positive, negative, or ignored;
+6. estimates surveyed host area;
+7. converts surveyed area into estimated surveyed hosts;
+8. converts positive area into estimated infected hosts; and
+9. calculates prevalence as:
 
-### The Dashboard does the following
+```text
+estimated infected hosts / estimated surveyed hosts
+```
 
-### 1. It loads the host coverage polygons.
-### 2. It estimates how many hosts are in each host polygon using:
+This is an area-based approximation and depends on the quality of the GIS data and host-density assumption.
 
-   polygon area x host density
+## PDF report
 
-### 3. It loads survey polygons for each year.
-### 4. It checks which survey polygons overlap which host polygons.
-### 5. It uses survey status labels to decide whether each survey polygon is positive, negative, or ignored.
-### 6. It estimates how much host area was surveyed.
-### 7. It converts surveyed area into estimated surveyed hosts.
-### 8. It converts positive surveyed area into estimated infected hosts.
-### 9. It estimates yearly prevalence as:
+The report includes:
 
-   estimated infected hosts / estimated surveyed hosts
+- the overall prevalence trend;
+- estimated prevalence change;
+- estimated final prevalence;
+- estimated annual change;
+- key caveats;
+- trend plots;
+- yearly survey tables; and
+- survey-effort summaries.
 
-This is an area-based approximation. It depends on the host density assumption and on the quality of the polygon data.
+Targeted surveillance may overestimate prevalence across the wider host population because high-risk locations are more likely to be sampled.
 
+---
 
-## 10.6 How to read the PDF report
+# Simulator guide
 
-The PDF report starts with a summary.
+## Main sections
 
-### The first page includes
+The Simulator contains:
 
-- the overall trend,
-- estimated change in prevalence,
-- estimated final prevalence,
-- prevalence change per year,
-- key caveats.
+1. **Host Landscape**
+2. **True Prevalence**
+3. **Infection Landscape**
+4. **Sampling Effort**
+5. **Survey Design**
+6. **Results**
+7. **Scenario Comparison**
 
-### Later pages include
+## Recommended first run
 
-- prevalence trend plots,
-- yearly survey tables,
-- observed effort versus indicative required effort,
-- effort summary tables.
+1. Open the Simulator.
+2. In **Host Landscape**, select **Generate synthetic clusters**.
+3. Generate the landscape.
+4. In **True Prevalence**, keep the default values and generate the curve.
+5. In **Infection Landscape**, keep clustering set to **Random**.
+6. Generate the infection landscape.
+7. In **Sampling Effort**, estimate sample sizes.
+8. In **Survey Design**, simulate surveys.
+9. In **Results**, fit the two methods.
+10. Review the plot and results table.
 
-### Important
+## Host Landscape
 
-If the survey footprint is very targeted, the estimated prevalence may be higher than the true prevalence across the wider host landscape. This is because targeted surveys are more likely to visit places where disease is suspected.
+This section creates the host population.
 
+Options:
 
-# 11. Simulator user guide
+- **Load host polygons** — uses a real host coverage shapefile;
+- **Generate synthetic clusters** — creates a simulated landscape;
+- **Host density** — converts area into host count.
 
-The Simulator is arranged as a step-by-step workflow.
+Outputs include:
 
-### The main windows are
+- a host landscape plot;
+- a landscape summary; and
+- a cluster-size distribution.
 
-### 1. Host Landscape
-### 2. True Prevalence
-### 3. Infection Landscape
-### 4. Sampling Effort
-### 5. Survey Design
-### 6. Results
-### 7. Scenario Comparison
+Each bubble represents a host cluster. Larger bubbles contain more hosts.
 
+## True Prevalence
 
-## 11.1 Recommended first run
+This section defines the true prevalence trajectory.
 
-Use this first to check that the Simulator works.
+Options include:
 
-### 1. Open Run Simulator.bat.
-### 2. Go to Host Landscape.
-### 3. Choose Generate synthetic clusters.
-### 4. Press Generate host landscape.
-### 5. Go to True Prevalence.
-### 6. Keep the default values.
-### 7. Press Generate prevalence curve.
-### 8. Go to Infection Landscape.
-### 9. Keep infection clustering as Random.
-### 10. Press Generate infection landscape.
-### 11. Go to Sampling Effort.
-### 12. Keep the default values.
-### 13. Press Estimate sample sizes.
-### 14. Go to Survey Design.
-### 15. Keep method-specific sample sizes selected.
-### 16. Press Simulate surveys.
-### 17. Go to Results.
-### 18. Press Fit Appendix C and E.
-### 19. Review the plot and key results table.
+- number of survey rounds;
+- curve shape;
+- initial prevalence; and
+- final prevalence.
 
+The true curve is the value the survey methods attempt to recover.
 
-## 11.2 Host Landscape window
+## Infection Landscape
 
-### Purpose
+This section assigns infection to the host population while matching the selected prevalence curve.
 
-This creates the host population that can become infected.
+Clustering options:
 
-### Options
+- **Random**
+- **Low**
+- **Medium**
+- **High**
 
-### 1. Load host polygons
-   Uses a real host coverage polygon file. Each polygon becomes one host cluster.
+Higher clustering concentrates infection into fewer hotspot clusters.
 
-### 2. Generate synthetic clusters
-   Creates a fake landscape for controlled experiments.
+Outputs include:
 
-### 3. Host density
-   Converts area into host count.
+- an infection landscape plot;
+- a round summary; and
+- a hotspot table.
 
-### Outputs
+## Sampling Effort
 
-- host landscape bubble plot,
-- landscape summary table,
-- cluster size distribution plot.
+This section estimates required sample sizes.
 
-### Interpretation
+Methods:
 
-Each bubble is a host cluster. Larger bubbles contain more hosts.
+- **Change Method** — compares the first and final survey rounds;
+- **Regression Method** — uses all survey rounds to estimate a trend.
 
+Important settings include:
 
-## 11.3 True Prevalence window
+- significance level;
+- statistical power;
+- detectable change;
+- target final prevalence; and
+- clustering inflation.
 
-### Purpose
+Outputs include:
 
-This defines the true disease prevalence over time.
+- a sampling-effort table; and
+- a required sample-size plot.
 
-The true prevalence curve is the hidden truth that the survey methods are trying to estimate.
+## Survey Design
 
-### Options
+This section simulates field sampling.
 
-### 1. Number of rounds
-   Number of survey time points.
+Options include:
 
-### 2. Curve shape
-   Shape of the true prevalence curve.
+- simple random sampling;
+- multistage sampling;
+- targeted sampling;
+- temporal overlap; and
+- detection sensitivity.
 
-### 3. Initial prevalence
-   True prevalence at the first round.
+Overlap types:
 
-### 4. Final prevalence
-   True prevalence at the final round.
+- **Cross-sectional** — a new sample each round;
+- **Rotating panel** — part of the previous sample is reused;
+- **Longitudinal** — the same hosts are followed over time.
 
-### Outputs
+Outputs include:
 
-- plot of true prevalence over time.
+- a survey allocation plot;
+- round summaries; and
+- targeted versus untargeted comparisons.
 
+## Results
 
-## 11.4 Infection Landscape window
+The Results section fits both methods to the simulated data.
 
-### Purpose
+Outputs include:
 
-This places infection onto the host landscape while keeping the total prevalence close to the true prevalence curve.
+- the true prevalence curve;
+- survey prevalence estimates;
+- the Change Method estimate;
+- the Regression Method trend; and
+- a summary table.
 
-### Clustering levels
+Use this section to check whether the methods recovered the true trend or systematically overestimated or underestimated it.
 
-### 1. Random
-   Infection is spread broadly, as if each host has approximately equal chance of being infected.
+## Scenario Comparison
 
-### 2. Low
-   Infection is slightly clustered.
+Use this section to compare two simulation settings.
 
-### 3. Medium
-   Infection is more concentrated around infected clusters and nearby clusters.
+Keep Scenario A as the baseline and change one setting in Scenario B.
 
-### 4. High
-   Infection is strongly concentrated around hotspot clusters.
+Examples:
 
-### Outputs
+- random versus targeted sampling;
+- random versus highly clustered infection;
+- cross-sectional versus longitudinal sampling; and
+- no sample-size inflation versus pilot-estimated inflation.
 
-- infection bubble plot,
-- round summary table,
-- hotspot table.
+When **runs per scenario** is:
 
-### Interpretation
+- `1`, the application shows one fitted example;
+- greater than `1`, the application repeats the scenario and displays error distributions.
 
-Each bubble is a host cluster. Larger bubbles contain more hosts. Darker red means a higher infected proportion in that cluster.
+Interpretation:
 
+- values near zero indicate accurate estimates;
+- positive values indicate overestimation;
+- negative values indicate underestimation; and
+- wider distributions indicate greater variability.
 
-## 11.5 Sampling Effort window
+Start with one run, then increase to 100 or more after confirming the settings.
 
-### Purpose
+---
 
-This estimates how many samples are needed for the two methods.
+# Simulator logic
 
-### Methods
+## Host landscape
 
-### 1. Change Method
-   Compares the first and final survey.
+The landscape consists of host clusters.
 
-### 2. Regression Method
-   Uses all survey rounds to estimate a trend.
+Each cluster has:
 
-### Important settings
-
-### 1. Significance level
-   How strict the evidence threshold is. The default is 0.05.
-
-### 2. Power
-   How likely the design is to detect the chosen effect if it is really present. The default is 0.80.
-
-### 3. Change Method detectable change
-   The change in prevalence the Change Method is designed to detect.
-
-### 4. Regression Method design prevalence
-   The target or final prevalence used in the Regression Method sample size calculation.
-
-### 5. Clustering inflation
-   Increases sample size when clustered sampling is expected to give less information than simple random sampling.
-
-### Outputs
-
-- required sampling effort table,
-- required sample size plot.
-
-
-## 11.6 Survey Design window
-
-### Purpose
-
-This simulates how field surveys are carried out.
-
-### Main options
-
-### 1. Simple random sampling
-   Every host has equal chance of being sampled.
-
-### 2. Multistage sampling
-   Clusters are selected first, then hosts are sampled within selected clusters.
-
-### 3. Targeted surveying
-   Surveys are more likely to sample infected or high-risk areas.
-
-### 4. Survey overlap
-   Some of the same hosts or sampling locations are reused across rounds.
-
-### 5. Detection sensitivity
-   Controls whether infected sampled hosts are always detected or sometimes missed.
-
-### Outputs
-
-- survey allocation plot,
-- survey round summary table,
-- targeted versus untargeted comparison.
-
-
-## 11.7 Results window
-
-### Purpose
-
-This fits the two analysis methods to the simulated survey data.
-
-### Outputs
-
-- true prevalence curve,
-- survey estimates,
-- Change Method result,
-- Regression Method fitted trend,
-- key results table.
-
-### Use this page to check
-
-- whether the methods recovered the true trend,
-- whether one method performed better than the other,
-- whether estimates are biased upward or downward.
-
-
-## 11.8 Scenario Comparison window
-
-### Purpose
-
-This compares two complete simulation configurations.
-
-Scenario A and Scenario B start with the same baseline settings. You can then change one setting in Scenario B to test a "what if" question.
-
-### Examples
-
-- Scenario A uses random surveying; Scenario B uses targeted surveying.
-- Scenario A has random infection; Scenario B has high infection clustering.
-- Scenario A has no overlap; Scenario B revisits sampled hosts.
-- Scenario A has no clustering inflation; Scenario B uses pilot-estimated inflation.
-
-### Runs per scenario
-
-### 1. If runs per scenario is 1:
-   The app shows one fitted example for each scenario.
-
-### 2. If runs per scenario is greater than 1:
-   The app repeats the simulation many times and shows error boxplots.
-
-### How to read the error plots
-
-- Values close to zero are good.
-- Positive values mean the method overestimated.
-- Negative values mean the method underestimated.
-- Wider boxes mean results are more variable.
-
-### Recommended workflow
-
-### 1. Keep Scenario A as the baseline.
-### 2. Change one important setting in Scenario B.
-### 3. Run 1 simulation first to visually inspect behaviour.
-### 4. Increase to 100 or more runs to compare reliability.
-
-
-# 12. Simulator logic
-
-This section explains how the Simulator works internally.
-
-## 1. Host landscape
-
-The simulator represents the landscape as clusters.
-
-A cluster can represent a forest, plantation, crop field, or host site.
-
-### Each cluster has
-
-- a location,
-- an area,
+- a location;
+- an area; and
 - a host count.
 
-Each host also has a host ID. This lets the simulator sample the same host again when overlap is used.
+Each host also has a unique ID, allowing it to be resampled in rotating-panel or longitudinal surveys.
 
+## True prevalence
 
-## 2. True prevalence curve
+The user defines the true prevalence at each survey round. This is the value the methods attempt to estimate.
 
-The user defines the true prevalence at each survey round.
+## Infection assignment
 
-This true curve is the answer that the survey methods are trying to recover.
+For each round:
 
+```text
+true prevalence × total hosts = target infected hosts
+```
 
-## 3. Infection landscape
+Infected hosts are added or removed until the target is reached.
 
-### For each round, the simulator calculates
+## Infection clustering
 
-true prevalence x total hosts = target infected hosts
+Under random infection, hosts have approximately equal infection probability.
 
-If the target infected count increases, new infected host IDs are added.
+Under clustered infection, infection is more likely near:
 
-If the target infected count decreases, infected host IDs are removed.
-
-This keeps the whole simulated epidemic close to the true prevalence curve.
-
-
-## 4. Infection clustering
-
-Random infection means every host has roughly equal chance of infection.
-
-Clustered infection means infection is more likely near:
-
-- existing infected clusters,
-- initial hotspot clusters,
+- existing infected clusters;
+- initial hotspots; and
 - nearby infected clusters.
 
-The simulator uses the five nearest neighbouring clusters when calculating nearby infection pressure. This keeps the calculation faster while still representing local spread.
+The Simulator uses the five nearest neighbouring clusters when calculating local infection pressure.
 
+## Survey simulation
 
-## 5. Survey simulation
+Simple random sampling selects hosts from the full population.
 
-The simulator chooses host IDs according to the selected survey design.
+Multistage sampling selects clusters first and then hosts within those clusters.
 
-Simple random sampling chooses from the whole host population.
+Targeted sampling increases the probability of selecting infected or high-risk hosts and clusters.
 
-Multistage sampling chooses clusters first and then samples hosts within those clusters.
+Temporal overlap reuses some host IDs from the previous survey round.
 
-Targeted sampling gives infected or high-risk hosts and clusters a higher chance of being sampled.
+## Analysis
 
-Overlap reuses some host IDs from the previous survey round.
+The surveys are analysed using:
 
+1. **Change Method** — uses the first and final survey estimates.
+2. **Regression Method** — uses all survey rounds.
 
-## 6. Analysis
+Because the Simulator knows the truth, it calculates:
 
-### The survey results are analysed by
-
-### 1. Change Method
-   Uses the first and final survey estimates.
-
-### 2. Regression Method
-   Uses all survey rounds.
-
-Because the simulator knows the true answer, it can measure error:
-
+```text
 error = estimated value - true value
+```
 
+---
 
-# 13. Troubleshooting
+# Troubleshooting
 
-### If Setup.bat says Python is not recognised
+## Python is not recognised
 
-### 1. Install Python from python.org.
-### 2. Make sure "Add Python to PATH" is ticked.
-### 3. Run Setup.bat again.
+1. Install Python from `python.org`.
+2. Tick **Add Python to PATH**.
+3. Run `Setup.bat` again.
 
-### If Setup.bat fails while installing packages
+## Package installation fails
 
-### 1. Check internet access.
-### 2. Check whether a firewall or proxy is blocking downloads.
+Check:
 
-### If the application does not open
+- internet access;
+- firewall restrictions;
+- proxy settings; and
+- installation permissions.
 
-### 1. Check that Setup.bat has been run.
-### 2. Check that the black command window is still open.
-### 3. Check whether the command window shows an error.
-### 4. Try closing the command window and opening the application again.
+## The application does not open
 
-If the browser says it cannot reach the page:
+Check that:
 
-### 1. Wait a few more seconds.
-### 2. Check the address.
-### 3. Dashboard address:
+- `Setup.bat` has been run;
+- the command window is still open; and
+- the command window does not show an error.
 
-   http://127.0.0.1:8000
+Then close the application and try again.
 
-### 4. Simulator address:
+## The browser cannot connect
 
-   http://127.0.0.1:8001
+Wait a few seconds and check the address:
 
-### If maps or shapefiles do not load
+```text
+Dashboard: http://127.0.0.1:8000
+Simulator: http://127.0.0.1:8001
+```
 
-### 1. Check that the file path is correct.
-### 2. Check that all shapefile sidecar files are present.
-### 3. Do not move only the .shp file.
-### 4. Try loading the folder that contains the shapefile rather than typing the exact .shp file.
+## Shapefiles do not load
 
-### If the Simulator is slow
+Check that:
 
-### 1. Use fewer scenario comparison runs.
-### 2. Start with 1 run for visual checking.
-### 3. Increase to 100 or more runs only after the scenario is configured correctly.
-### 4. Use a synthetic landscape with fewer clusters while testing settings.
+- the shapefile folder is in the same directory as the project files;
+- the displayed path is correct;
+- all shapefile components are present; and
+- the files have not been renamed or separated.
 
-### If the PDF does not generate
+## The Simulator is slow
 
-### 1. Make sure results have been generated first.
-### 2. Check the command window for errors.
-### 3. Run Setup.bat again to make sure all report packages are installed.
+- start with one scenario run;
+- use fewer synthetic clusters while testing;
+- increase to 100 or more runs only after confirming the settings.
 
+## The PDF report does not generate
 
-# 14. Important interpretation notes
+- generate results first;
+- check the command window for errors; and
+- rerun `Setup.bat` to confirm that all packages are installed.
 
-The Dashboard analyses the survey record that is supplied to it. If the survey record is targeted toward suspected infected sites, the estimated prevalence may be higher than the true prevalence across the wider host landscape.
+---
 
-The effort benchmarks in the Dashboard are indicative. They are useful reference points, but they do not prove that messy historical survey data followed the ideal assumptions of the sample size formulas.
+# Interpretation notes
 
-The Simulator is a simplified model. It is useful for testing survey and analysis behaviour, but it is not a full biological spread model and should not be treated as a forecast.
+The Dashboard analyses the survey data supplied to it. If surveillance targets suspected infected locations, estimated prevalence may be higher than prevalence across the wider host population.
+
+Dashboard effort benchmarks are indicative. They do not show that historical survey data followed the assumptions of the sample-size calculations.
+
+The Simulator is a simplified testing model. It is not a biological spread model and should not be used as a forecast.
