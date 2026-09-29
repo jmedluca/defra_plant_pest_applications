@@ -22,24 +22,19 @@ if str(APP_DIR) not in sys.path:
 
 from plant_pest_backend import (
     DEFAULT_ALPHA,
-    DEFAULT_APPENDIX_C_DELTA,
-    DEFAULT_APPENDIX_E_TARGET,
-    DEFAULT_POWER,
+    DEFAULT_CHANGE_METHOD_DELTA,
+    DEFAULT_REGRESSION_METHOD_TARGET,
     LARCH_HOST_DIR,
     SIM_CURVE_CHOICES,
     SIM_HOST_CLUSTERING_CHOICES,
     SIM_INFECTION_CLUSTERING_CHOICES,
-    SIM_OVERLAP_CHOICES,
     SIM_SURVEY_TARGETING_CHOICES,
     SIMX_DEFAULT_HOST_DENSITY_KM2,
-    SIMX_DEFAULT_PSU_BLOCK_SIDE,
     SIMX_DEFAULT_SURVEY_HOSTS_PER_ROUND,
     SIMX_DEFAULT_TOTAL_AREA_KM2,
     _sim_fit_logistic_counts,
     _sim_make_prevalence_schedule,
-    _sim_overlap_config,
     _sim_predict_logistic,
-    _sim_true_beta_from_schedule,
     _simx_fit_methods,
     _simx_infection_hotspot_table,
     _simx_infection_round_summary_table,
@@ -64,11 +59,18 @@ from plant_pest_backend import (
 )
 
 
-SIMX_DEFAULT_SYNTHETIC_CLUSTERS = 600
+SIMX_DEFAULT_SYNTHETIC_CLUSTERS = 1000
 SIMX_DEFAULT_SEED = 123
-SIMX_BASELINE_P0 = 0.05
+SIMX_BASELINE_P0 = 0.0333
 SIMX_BASELINE_P_END = 0.005
-SIMX_BASELINE_DELTA = abs(SIMX_BASELINE_P_END - SIMX_BASELINE_P0)
+SIMX_BASELINE_DELTA = 0.03
+SIMX_BASELINE_POWER = 0.99
+SIMX_BASELINE_WITHIN_CLUSTER_CAP = 5
+SIMX_REGRESSION_MODEL_CHOICES = {
+    "logistic": "Logit-linear",
+    "fp2": "Fractional polynomial 2",
+    "fp3": "Fractional polynomial 3",
+}
 GRID_TWO_COLUMNS = "display:grid;grid-template-columns:repeat(2, minmax(0, 1fr));gap:1rem;align-items:start;"
 GRID_TWO_COLUMNS_WITH_TOP_MARGIN = f"{GRID_TWO_COLUMNS}margin-top:1rem;"
 
@@ -111,7 +113,7 @@ def _host_landscape_sidebar() -> Any:
                 "polygons": "Load host polygons",
                 "synthetic": "Generate synthetic clusters",
             },
-            selected="polygons",
+            selected="synthetic",
         ),
         ui.panel_conditional(
             "input.simx_landscape_source === 'polygons'",
@@ -134,6 +136,12 @@ def _host_landscape_sidebar() -> Any:
             "input.simx_landscape_source === 'synthetic'",
             # Synthetic mode makes a new landscape from scratch.  This is useful
             # for testing general plant pest scenarios, not just Larch/Ramorum.
+            ui.input_select(
+                "simx_host_clustering_level",
+                "Host clustering level",
+                choices=SIM_HOST_CLUSTERING_CHOICES,
+                selected="diffuse",
+            ),
             ui.input_numeric(
                 "simx_synth_n_clusters",
                 "Number of clusters",
@@ -177,6 +185,11 @@ def _prevalence_sidebar() -> Any:
         ui.input_select("simx_curve_type", "True prevalence curve", choices=SIM_CURVE_CHOICES, selected="logit_linear"),
         ui.input_numeric("simx_p0", "Initial prevalence", value=SIMX_BASELINE_P0, min=0.0001, max=0.999, step=0.001),
         ui.input_numeric("simx_p_end", "Final prevalence", value=SIMX_BASELINE_P_END, min=0.0001, max=0.999, step=0.001),
+        ui.input_numeric("simx_prevalence_shift", "Prevalence shift", value=0.0, min=-0.03, max=0.2, step=0.001),
+        ui.p(
+            "For the prevalence-level sensitivity study, the shift is applied to both endpoints before the curve is constructed.",
+            class_="text-muted small",
+        ),
         ui.input_action_button("btn_simx_curve", "Generate prevalence curve", class_="btn-primary"),
     )
 
@@ -189,8 +202,9 @@ def _infection_sidebar() -> Any:
         ui.p("Apply the prevalence curve to the host landscape and inspect infection spread round by round."),
         ui.input_select("simx_infection_clustering", "Infection clustering", choices=SIM_INFECTION_CLUSTERING_CHOICES, selected="random"),
         ui.p(
-            "Clustered scenarios draw a small, variable number of initial hotspot clusters. New infections favour "
-            "clusters that are already infected and clusters exposed to infected hosts in their five nearest neighbours.",
+            "Clustered scenarios choose a variable number of hotspot clusters from the host landscape. Infection is "
+            "weighted very strongly towards clusters near those hotspot clusters, so hotspot cores fill first and the "
+            "pattern only spreads outward gradually while the total prevalence is kept exact each round.",
             class_="text-muted small",
         ),
         ui.input_numeric("simx_epidemic_seed", "Infection landscape seed", value=SIMX_DEFAULT_SEED + 101, min=1, step=1),
@@ -211,10 +225,10 @@ def _effort_sidebar() -> Any:
             choices={"none": "No inflation", "pilot": "Pilot-estimated phi"},
             selected="none",
         ),
-        ui.input_numeric("simx_appendix_alpha", "Significance level (alpha)", value=DEFAULT_ALPHA, min=0.001, max=0.2, step=0.005),
-        ui.input_numeric("simx_appendix_power", "Power", value=DEFAULT_POWER, min=0.5, max=0.999, step=0.01),
-        ui.input_numeric("simx_appendix_c_delta", "Appendix C detectable change", value=SIMX_BASELINE_DELTA, min=0.001, max=0.5, step=0.005),
-        ui.input_numeric("simx_appendix_e_target", "Appendix E target prevalence", value=DEFAULT_APPENDIX_E_TARGET, min=0.0001, max=0.5, step=0.001),
+        ui.input_numeric("simx_planning_alpha", "Significance level (alpha)", value=DEFAULT_ALPHA, min=0.001, max=0.2, step=0.005),
+        ui.input_numeric("simx_planning_power", "Power", value=SIMX_BASELINE_POWER, min=0.5, max=0.999, step=0.01),
+        ui.input_numeric("simx_change_method_delta", "Change Method detectable change", value=SIMX_BASELINE_DELTA, min=0.001, max=0.5, step=0.005),
+        ui.input_numeric("simx_regression_method_target", "Regression Method design prevalence", value=DEFAULT_REGRESSION_METHOD_TARGET, min=0.0001, max=0.5, step=0.001),
         ui.input_numeric("simx_effort_seed", "Sampling effort seed", value=SIMX_DEFAULT_SEED + 151, min=1, step=1),
         ui.input_action_button("btn_simx_effort", "Estimate sample sizes", class_="btn-primary"),
     )
@@ -231,20 +245,32 @@ def _survey_sidebar() -> Any:
             "Sample size mode",
             choices={
                 "static": "Static per-round size",
-                "method_specific": "Method-specific Appendix C/E sizes",
+                "method_specific": "Method-specific Change/Regression sizes",
             },
             selected="method_specific",
         ),
         ui.input_select("simx_sampling_mode", "Sampling mode", choices={"srs": "SRS", "multistage": "MSS"}, selected="srs"),
-        # For MSS, the app first chooses clusters, then chooses host IDs inside
-        # each chosen cluster.  This field controls the second step.
-        ui.input_numeric("simx_psu_block_side", "MSS groups sampled per cluster", value=SIMX_DEFAULT_PSU_BLOCK_SIDE, min=1, step=1),
         ui.input_select("simx_survey_targeting", "Targeted surveying", choices=SIM_SURVEY_TARGETING_CHOICES, selected="random"),
-        ui.input_select("simx_overlap_type", "Overlap type", choices=SIM_OVERLAP_CHOICES, selected="cross_sectional"),
+        ui.input_slider(
+            "simx_host_resampling_prop",
+            "Proportion of hosts resampled",
+            min=0.0,
+            max=1.0,
+            value=0.0,
+            step=0.01,
+        ),
+        ui.p(
+            "Use 0.00, 0.33, 0.67 or 1.00 to reproduce the production host-resampling study. "
+            "This changes realised resampling only; Change Method planning correlation remains 0.",
+            class_="text-muted small",
+        ),
         ui.input_numeric("simx_survey_hosts_per_round", "Static survey hosts per round", value=SIMX_DEFAULT_SURVEY_HOSTS_PER_ROUND, min=1, step=10),
-        ui.input_numeric("simx_within_cluster_cap", "Hosts sampled per MSS cluster", value=1, min=1, step=1),
+        ui.input_numeric("simx_within_cluster_cap", "Hosts per MSS location visit", value=SIMX_BASELINE_WITHIN_CLUSTER_CAP, min=1, step=1),
+        ui.p(
+            "MSS uses PPS location visits. A physical location may be revisited, but an individual host is not duplicated within the same survey round.",
+            class_="text-muted small",
+        ),
         ui.input_numeric("simx_method_sensitivity", "Method sensitivity", value=1.0, min=0.0, max=1.0, step=0.01),
-        ui.input_numeric("simx_biased_multiplier", "Biased sampling multiplier", value=1.0, min=1.0, step=0.1),
         ui.input_numeric("simx_survey_seed", "Survey seed", value=SIMX_DEFAULT_SEED + 202, min=1, step=1),
         ui.input_action_button("btn_simx_survey", "Simulate surveys", class_="btn-primary"),
     )
@@ -255,7 +281,13 @@ def _results_sidebar() -> Any:
     return ui.sidebar(
         ui.h3("Results"),
         ui.p("Fit the Change Method and Regression Method to the simulated survey outputs."),
-        ui.input_action_button("btn_simx_fit", "Fit Appendix C and E", class_="btn-primary"),
+        ui.input_select(
+            "simx_regression_model",
+            "Regression Method model",
+            choices=SIMX_REGRESSION_MODEL_CHOICES,
+            selected="logistic",
+        ),
+        ui.input_action_button("btn_simx_fit", "Fit Change and Regression Methods", class_="btn-primary"),
     )
 
 
@@ -269,6 +301,10 @@ def _comparison_scenario_controls(prefix: str, label: str) -> Any:
         ui.input_select(f"{prefix}_curve_type", "Curve shape", choices=SIM_CURVE_CHOICES, selected="logit_linear"),
         ui.input_numeric(f"{prefix}_p0", "Initial prevalence", value=SIMX_BASELINE_P0, min=0.0001, max=0.999, step=0.001),
         ui.input_numeric(f"{prefix}_p_end", "Final prevalence", value=SIMX_BASELINE_P_END, min=0.0001, max=0.999, step=0.001),
+        ui.input_numeric(f"{prefix}_prevalence_shift", "Prevalence shift", value=0.0, min=-0.03, max=0.2, step=0.001),
+        ui.hr(),
+        ui.h5("Host Landscape"),
+        ui.input_select(f"{prefix}_host_clustering", "Host clustering", choices=SIM_HOST_CLUSTERING_CHOICES, selected="diffuse"),
         ui.hr(),
         ui.h5("Infection Landscape"),
         ui.input_select(f"{prefix}_infection_clustering", "Infection clustering", choices=SIM_INFECTION_CLUSTERING_CHOICES, selected="random"),
@@ -282,20 +318,20 @@ def _comparison_scenario_controls(prefix: str, label: str) -> Any:
             choices={"none": "No inflation", "pilot": "Pilot-estimated phi"},
             selected="none",
         ),
-        ui.input_numeric(f"{prefix}_appendix_c_delta", "Change Method detectable change", value=SIMX_BASELINE_DELTA, min=0.001, max=0.5, step=0.005),
-        ui.input_numeric(f"{prefix}_appendix_e_target", "Regression Method design prevalence", value=DEFAULT_APPENDIX_E_TARGET, min=0.0001, max=0.5, step=0.001),
+        ui.input_numeric(f"{prefix}_change_method_delta", "Change Method detectable change", value=SIMX_BASELINE_DELTA, min=0.001, max=0.5, step=0.005),
+        ui.input_numeric(f"{prefix}_regression_method_target", "Regression Method design prevalence", value=DEFAULT_REGRESSION_METHOD_TARGET, min=0.0001, max=0.5, step=0.001),
         ui.hr(),
         ui.h5("Survey Design"),
         # These settings affect where the simulated survey samples are taken.
         # This is where users can compare random surveying with targeted surveying.
         ui.input_select(f"{prefix}_sampling_mode", "Sampling mode", choices={"srs": "SRS", "multistage": "MSS"}, selected="srs"),
-        ui.input_select(f"{prefix}_survey_targeting", "Targeted surveying", choices=SIM_SURVEY_TARGETING_CHOICES, selected="random"),
-        ui.input_select(f"{prefix}_overlap_type", "Overlap type", choices=SIM_OVERLAP_CHOICES, selected="cross_sectional"),
-        ui.input_numeric(f"{prefix}_within_cluster_cap", "Hosts sampled per MSS cluster", value=1, min=1, step=1),
+        ui.input_select(f"{prefix}_survey_targeting", "Targeted surveying (supplementary stress test)", choices=SIM_SURVEY_TARGETING_CHOICES, selected="random"),
+        ui.input_slider(f"{prefix}_host_resampling_prop", "Proportion of hosts resampled", min=0.0, max=1.0, value=0.0, step=0.01),
+        ui.input_numeric(f"{prefix}_within_cluster_cap", "Hosts per MSS location visit", value=SIMX_BASELINE_WITHIN_CLUSTER_CAP, min=1, step=1),
         ui.input_numeric(f"{prefix}_method_sensitivity", "Detection sensitivity", value=1.0, min=0.0, max=1.0, step=0.01),
         ui.hr(),
         ui.h5("Analysis"),
-        ui.input_select(f"{prefix}_regression_model", "Regression model", choices={"logistic": "Logistic"}, selected="logistic"),
+        ui.input_select(f"{prefix}_regression_model", "Regression model", choices=SIMX_REGRESSION_MODEL_CHOICES, selected="logistic"),
     )
 
 
@@ -305,13 +341,13 @@ def _comparison_sidebar() -> Any:
     return ui.sidebar(
         ui.h3("Scenario Comparison"),
         ui.p("Run repeated simulations for two configurations and compare the error distributions."),
-        ui.input_numeric("simx_compare_iters", "Runs per scenario", value=100, min=1, max=1000, step=1),
+        ui.input_numeric("simx_compare_iters", "Runs per scenario", value=1, min=1, max=1000, step=1),
         ui.input_numeric("simx_compare_seed", "Comparison seed", value=SIMX_DEFAULT_SEED + 500, min=1, step=1),
         ui.input_numeric("simx_compare_alpha", "Significance level", value=DEFAULT_ALPHA, min=0.001, max=0.2, step=0.005),
-        ui.input_numeric("simx_compare_power", "Power", value=DEFAULT_POWER, min=0.5, max=0.999, step=0.01),
-        ui.input_checkbox("simx_compare_use_current_host", "Use the generated host landscape from the Host Landscape page", value=True),
+        ui.input_numeric("simx_compare_power", "Power", value=SIMX_BASELINE_POWER, min=0.5, max=0.999, step=0.01),
+        ui.input_checkbox("simx_compare_use_current_host", "Use the generated host landscape for both scenarios", value=False),
         ui.p(
-            "If no host landscape has been generated, the comparison uses the baseline synthetic landscape.",
+            "Leave this off to compare host-clustering scenarios directly. If switched on, both scenarios use the same generated landscape and their host-clustering controls are ignored.",
             class_="text-muted small",
         ),
         ui.input_action_button("btn_simx_compare", "Run Scenario Comparison", class_="btn-primary"),
@@ -398,26 +434,32 @@ def _simx_key_results_rows(epidemic: dict[str, Any] | None, fit: dict[str, Any] 
     true_initial = float(schedule["true_prev"].iloc[0])
     true_final = float(schedule["true_prev"].iloc[-1])
     true_change = true_final - true_initial
-    true_slope = float(_sim_true_beta_from_schedule(schedule))
+    fitted_model = str(fit.get("regression_model", "logistic"))
+    truth_n = np.full(len(schedule), 1_000_000.0, dtype=float)
+    truth_y = np.round(schedule["true_prev"].to_numpy(dtype=float) * truth_n)
+    true_beta, _ = _sim_fit_logistic_counts(
+        schedule["year"].to_numpy(dtype=float),
+        truth_y,
+        truth_n,
+        model_form=fitted_model,
+    )
+    true_slope = float(true_beta[1]) if len(true_beta) >= 2 and np.isfinite(true_beta[1]) else np.nan
 
     e_df = fit.get("survey_df", pd.DataFrame()).copy()
     # Regression Method uses all survey rounds to estimate a smooth trend.
-    if e_df.empty:
+    beta_hat = np.asarray(fit.get("regression_beta", np.asarray([], dtype=float)), dtype=float)
+    fit_valid = bool(fit.get("regression_fit_valid", len(beta_hat) >= 2 and np.isfinite(beta_hat).all()))
+    if e_df.empty or len(beta_hat) < 2 or not fit_valid or not np.isfinite(beta_hat).all():
         reg_initial = reg_final = reg_change = reg_slope = np.nan
     else:
-        beta_hat, _ = _sim_fit_logistic_counts(
-            e_df["year"].to_numpy(dtype=float),
-            e_df["y"].to_numpy(dtype=float),
-            e_df["n"].to_numpy(dtype=float),
-        )
         first_year = float(e_df["year"].min())
         last_year = float(e_df["year"].max())
-        reg_initial = float(_sim_predict_logistic(beta_hat, first_year))
-        reg_final = float(_sim_predict_logistic(beta_hat, last_year))
+        reg_initial = float(_sim_predict_logistic(beta_hat, first_year, model_form=fitted_model))
+        reg_final = float(_sim_predict_logistic(beta_hat, last_year, model_form=fitted_model))
         reg_change = reg_final - reg_initial
         reg_slope = float(beta_hat[1])
 
-    c_df = fit.get("appendix_c_survey_df", pd.DataFrame()).copy()
+    c_df = fit.get("change_method_survey_df", pd.DataFrame()).copy()
     if c_df.empty or "n" not in c_df.columns:
         c_df = pd.DataFrame()
     else:
@@ -467,6 +509,100 @@ def _simx_key_results_table(epidemic: dict[str, Any] | None, fit: dict[str, Any]
     out = pd.DataFrame(rows)
     for col in ["true_value", "estimated_value"]:
         out[col] = pd.to_numeric(out[col], errors="coerce").round(6)
+    return out
+
+
+def _simx_survey_diagnostics_table(surveys: dict[str, Any] | None) -> pd.DataFrame:
+    """Expose achieved effort, cluster coverage and realised overlap by round."""
+    columns = [
+        "method",
+        "round_id",
+        "year",
+        "requested_n",
+        "achieved_n",
+        "shortfall",
+        "clusters_sampled",
+        "host_overlap_previous",
+        "location_overlap_previous",
+    ]
+    if not surveys:
+        return pd.DataFrame(columns=columns)
+
+    rows: list[dict[str, Any]] = []
+    method_map = {
+        "regression_method": "Regression Method",
+        "change_method": "Change Method",
+        "static": "Static survey",
+    }
+    for key, method_name in method_map.items():
+        survey = surveys.get(key)
+        if not isinstance(survey, dict):
+            continue
+        survey_df = survey.get("survey_df", pd.DataFrame())
+        sampled_rounds = survey.get("sampled_hosts_by_round", [])
+        previous_hosts: set[int] | None = None
+        previous_clusters: set[int] | None = None
+        for idx, summary in survey_df.reset_index(drop=True).iterrows():
+            sampled = sampled_rounds[idx] if idx < len(sampled_rounds) else pd.DataFrame()
+            hosts = set(pd.to_numeric(sampled.get("host_id", pd.Series(dtype=float)), errors="coerce").dropna().astype(int).tolist())
+            clusters = set(pd.to_numeric(sampled.get("cluster_id", pd.Series(dtype=float)), errors="coerce").dropna().astype(int).tolist())
+            if hosts:
+                host_overlap = (
+                    float(len(hosts & previous_hosts) / len(hosts))
+                    if previous_hosts is not None and len(hosts) > 0
+                    else np.nan
+                )
+                location_overlap = (
+                    float(len(clusters & previous_clusters) / len(clusters))
+                    if previous_clusters is not None and len(clusters) > 0
+                    else np.nan
+                )
+                previous_hosts = hosts
+                previous_clusters = clusters
+            else:
+                host_overlap = np.nan
+                location_overlap = np.nan
+            rows.append(
+                {
+                    "method": method_name,
+                    "round_id": int(summary.get("round_id", idx)),
+                    "year": round(float(summary.get("year", np.nan)), 3),
+                    "requested_n": int(summary.get("n_requested", 0)),
+                    "achieved_n": int(summary.get("n", 0)),
+                    "shortfall": int(summary.get("n_shortfall", 0)),
+                    "clusters_sampled": int(summary.get("clusters_sampled", 0)),
+                    "host_overlap_previous": round(host_overlap, 4) if np.isfinite(host_overlap) else np.nan,
+                    "location_overlap_previous": round(location_overlap, 4) if np.isfinite(location_overlap) else np.nan,
+                }
+            )
+    return pd.DataFrame(rows, columns=columns)
+
+
+def _simx_fit_diagnostics_table(fit: dict[str, Any] | None, effort: dict[str, Any] | None) -> pd.DataFrame:
+    """Show the production regression and Design Effect diagnostics."""
+    if fit is None and effort is None:
+        return pd.DataFrame(columns=["metric", "value"])
+    phi = (effort or {}).get("phi", {}) if isinstance(effort, dict) else {}
+    rows = [
+        {"metric": "Regression model", "value": (fit or {}).get("regression_model", "")},
+        {"metric": "Regression fit valid", "value": (fit or {}).get("regression_fit_valid", np.nan)},
+        {"metric": "Regression converged", "value": (fit or {}).get("regression_converged", np.nan)},
+        {"metric": "Separation suspected", "value": (fit or {}).get("regression_separation_suspected", np.nan)},
+        {"metric": "Fit reason", "value": (fit or {}).get("regression_fit_reason", "")},
+        {"metric": "Information-matrix condition number", "value": (fit or {}).get("regression_information_condition_number", np.nan)},
+        {"metric": "Covariance type", "value": (fit or {}).get("regression_cov_type", "")},
+        {"metric": "Robust grouping unit", "value": (fit or {}).get("regression_robust_unit", "")},
+        {"metric": "Robust cluster/host groups", "value": (fit or {}).get("regression_cluster_count", 0)},
+        {"metric": "Design Effect phi", "value": phi.get("phi", np.nan)},
+        {"metric": "Pilot ICC rho", "value": phi.get("rho", np.nan)},
+        {"metric": "Mean hosts per physical cluster", "value": phi.get("m_observed", np.nan)},
+        {"metric": "Phi estimator", "value": phi.get("estimator", "")},
+        {"metric": "Change planning correlation", "value": (effort or {}).get("change_method_corr_used", np.nan)},
+    ]
+    out = pd.DataFrame(rows)
+    numeric = pd.to_numeric(out["value"], errors="coerce")
+    mask = numeric.notna()
+    out.loc[mask, "value"] = numeric.loc[mask].round(6)
     return out
 
 
@@ -617,6 +753,17 @@ def _results_panel() -> Any:
                     ui.output_data_frame("simx_key_results_table"),
                     style="margin-top:1rem;",
                 ),
+                ui.div(
+                    ui.card(
+                        ui.card_header("Survey Diagnostics"),
+                        ui.output_data_frame("simx_survey_diagnostics_table"),
+                    ),
+                    ui.card(
+                        ui.card_header("Regression and Design Effect Diagnostics"),
+                        ui.output_data_frame("simx_fit_diagnostics_table"),
+                    ),
+                    style=GRID_TWO_COLUMNS_WITH_TOP_MARGIN,
+                ),
             ),
         ),
     )
@@ -640,6 +787,11 @@ def _scenario_comparison_panel() -> Any:
                 ui.card(
                     ui.card_header("Comparison Summary"),
                     ui.output_data_frame("simx_compare_summary_table"),
+                    style="margin-top:1rem;",
+                ),
+                ui.card(
+                    ui.card_header("Comparison Diagnostics"),
+                    ui.output_data_frame("simx_compare_diagnostics_table"),
                     style="margin-top:1rem;",
                 ),
             ),
@@ -687,14 +839,9 @@ def server(input, output, session):
         # targeted surveys.
         return "none" if str(targeting_level) == "random" else "defra_targeted"
 
-    def _overlap_prop(overlap_type: str) -> float:
-        # Convert a plain-language overlap option into the proportion of host IDs
-        # that are sampled again in the next round.
-        if overlap_type == "longitudinal":
-            return 1.0
-        if overlap_type == "rotating_panel":
-            return 0.7
-        return 0.0
+    def _host_resampling_prop(value: float) -> float:
+        # Production overlap experiments vary realised host resampling directly.
+        return float(np.clip(float(value), 0.0, 1.0))
 
     def _clear_after_host_or_curve() -> None:
         # If the landscape or true curve changes, all later results are no
@@ -718,11 +865,6 @@ def server(input, output, session):
     # ------------------------------------------------------------------
 
     @reactive.calc
-    def simx_overlap_corr():
-        # Appendix C uses a correlation value when surveys overlap between rounds.
-        return float(_sim_overlap_config(str(input.simx_overlap_type()), overlap_prop_rot=0.7)["corr_c"])
-
-    @reactive.calc
     def simx_display_round_index():
         # The round slider is 1-based for users, but Python list indexes are 0-based.
         epidemic = rv_simx_epidemic.get()
@@ -730,31 +872,24 @@ def server(input, output, session):
             return 0
         return max(0, min(int(input.simx_display_round()) - 1, len(epidemic["rounds"]) - 1))
 
-    def _comparison_overlap_prop(overlap_type: str) -> float:
-        # Translate the overlap label into the proportion of host IDs reused.
-        return _overlap_prop(overlap_type)
-
     def _comparison_spec(prefix: str) -> dict[str, Any]:
-        # Read all settings for Scenario A or Scenario B into one dictionary.
-        # This makes the comparison runner easier to call.
-        overlap_type = str(getattr(input, f"{prefix}_overlap_type")())
+        # Read all settings for Scenario A or Scenario B into one canonical spec.
         targeting_level = str(getattr(input, f"{prefix}_survey_targeting")())
         return {
             "curve_type": str(getattr(input, f"{prefix}_curve_type")()),
             "p0": float(getattr(input, f"{prefix}_p0")()),
             "p_end": float(getattr(input, f"{prefix}_p_end")()),
+            "prevalence_shift": float(getattr(input, f"{prefix}_prevalence_shift")()),
+            "host_clustering_level": str(getattr(input, f"{prefix}_host_clustering")()),
             "infection_clustering_level": str(getattr(input, f"{prefix}_infection_clustering")()),
             "sampling_mode": str(getattr(input, f"{prefix}_sampling_mode")()),
             "targeting_level": targeting_level,
-            "targeted_mode": _targeted_mode(targeting_level),
-            "overlap_type": overlap_type,
-            "overlap_prop": _comparison_overlap_prop(overlap_type),
+            "host_resampling_prop": _host_resampling_prop(getattr(input, f"{prefix}_host_resampling_prop")()),
             "within_cluster_cap": int(getattr(input, f"{prefix}_within_cluster_cap")()),
             "method_sens": float(getattr(input, f"{prefix}_method_sensitivity")()),
             "cluster_inflation_mode": str(getattr(input, f"{prefix}_cluster_inflation")()),
-            "appendix_c_delta": float(getattr(input, f"{prefix}_appendix_c_delta")()),
-            "appendix_c_corr": float(_sim_overlap_config(overlap_type, overlap_prop_rot=0.7)["corr_c"]),
-            "appendix_e_target": float(getattr(input, f"{prefix}_appendix_e_target")()),
+            "change_method_delta": float(getattr(input, f"{prefix}_change_method_delta")()),
+            "regression_method_target": float(getattr(input, f"{prefix}_regression_method_target")()),
             "regression_model": str(getattr(input, f"{prefix}_regression_model")()),
         }
 
@@ -762,119 +897,195 @@ def server(input, output, session):
     # Scenario Comparison Runner
     # ------------------------------------------------------------------
 
-    def _comparison_host(iter_seed: int) -> dict[str, Any]:
-        # Use the currently generated host landscape if the user selected that option.
-        # Otherwise make a fresh baseline synthetic landscape.
+    def _comparison_host(spec: dict[str, Any], iter_seed: int) -> dict[str, Any] | None:
+        # A supplied current landscape intentionally overrides A/B host clustering.
         current_host = rv_simx_host.get()
         if bool(input.simx_compare_use_current_host()) and current_host is not None:
             return current_host
-        return _simx_make_macro_host_landscape_synthetic(
-            n_clusters=SIMX_DEFAULT_SYNTHETIC_CLUSTERS,
-            total_area_km2=SIMX_DEFAULT_TOTAL_AREA_KM2,
-            host_density_km2=SIMX_DEFAULT_HOST_DENSITY_KM2,
-            rng=np.random.default_rng(int(iter_seed)),
-        )
+        return None
 
-    def _run_comparison_iteration(
-        scenario_name: str,
-        spec: dict[str, Any],
-        host: dict[str, Any],
-        iter_idx: int,
-        iter_seed: int,
+    def _run_scenario_once(
+        *,
+        seed: int,
+        n_rounds: int,
+        curve_type: str,
+        p0: float,
+        p_end: float,
+        prevalence_shift: float,
+        host_landscape: dict[str, Any] | None,
+        host_clustering_level: str,
+        n_clusters: int,
+        total_area_km2: float,
+        host_density_km2: float,
+        infection_clustering_level: str,
+        sampling_mode: str,
+        host_resampling_prop: float,
+        targeting_level: str,
+        within_cluster_cap: int,
+        method_sens: float,
+        cluster_inflation_mode: str,
+        planning_alpha: float,
+        planning_power: float,
+        change_method_delta: float,
+        regression_method_target: float,
+        regression_model: str,
     ) -> dict[str, Any]:
-        # Run one complete simulation for either Scenario A or Scenario B.
-        # This does every layer: prevalence curve, epidemic, sample sizes,
-        # surveys, fitted methods, and error metrics.
-        # The returned errors are always estimated value minus true value.
+        """Run one complete comparison scenario using the current backend API.
+
+        This local orchestration helper intentionally uses Change Method / Regression
+        Method names throughout.  The statistical and simulation calculations remain
+        in ``plant_pest_backend``; this function only wires the workflow together.
+        """
+        rng = np.random.default_rng(int(seed))
+        host = host_landscape
+        if host is None:
+            host = _simx_make_macro_host_landscape_synthetic(
+                n_clusters=int(n_clusters),
+                total_area_km2=float(total_area_km2),
+                host_density_km2=float(host_density_km2),
+                rng=rng,
+                host_clustering_level=str(host_clustering_level),
+            )
         schedule = _sim_make_prevalence_schedule(
-            curve_type=str(spec["curve_type"]),
-            p0=float(spec["p0"]),
-            p_end=float(spec["p_end"]),
-            prevalence_shift=0.0,
-            n_rounds=int(input.simx_n_rounds()),
+            curve_type=str(curve_type),
+            p0=float(p0),
+            p_end=float(p_end),
+            prevalence_shift=float(prevalence_shift),
+            n_rounds=int(n_rounds),
         )
         epidemic = _simx_make_macro_epidemic(
             host_landscape=host,
             prevalence_schedule=schedule,
-            infection_clustering_level=str(spec["infection_clustering_level"]),
-            rng=np.random.default_rng(int(iter_seed) + 101),
+            infection_clustering_level=str(infection_clustering_level),
+            rng=np.random.default_rng(int(seed) + 101),
         )
+        targeted_mode = "none" if str(targeting_level) == "random" else "defra_targeted"
         effort = _simx_macro_plan_sampling_effort(
             epidemic=epidemic,
-            sampling_mode=str(spec["sampling_mode"]),
-            overlap_type=str(spec["overlap_type"]),
-            targeted_mode=str(spec["targeted_mode"]),
-            within_cluster_cap=int(spec["within_cluster_cap"]),
-            overlap_prop=float(spec["overlap_prop"]),
-            targeting_level=str(spec["targeting_level"]),
+            sampling_mode=str(sampling_mode),
+            overlap_type="rotating_panel",
+            targeted_mode=targeted_mode,
+            within_cluster_cap=int(within_cluster_cap),
+            overlap_prop=float(host_resampling_prop),
+            targeting_level=str(targeting_level),
             p0_mode="pilot",
             assumed_p0=0.5,
-            appendix_alpha=float(input.simx_compare_alpha()),
-            appendix_power=float(input.simx_compare_power()),
-            appendix_c_delta=float(spec["appendix_c_delta"]),
-            appendix_c_corr=float(spec["appendix_c_corr"]),
-            appendix_e_target=float(spec["appendix_e_target"]),
-            cluster_inflation_mode=str(spec["cluster_inflation_mode"]),
+            planning_alpha=float(planning_alpha),
+            planning_power=float(planning_power),
+            change_method_delta=float(change_method_delta),
+            change_method_corr=0.0,
+            regression_method_target=float(regression_method_target),
+            cluster_inflation_mode=str(cluster_inflation_mode),
             fixed_phi=1.0,
-            rng=np.random.default_rng(int(iter_seed) + 151),
+            rng=np.random.default_rng(int(seed) + 151),
+            method_sens=float(method_sens),
         )
-        n_rounds = len(epidemic["rounds"])
-        # Regression Method samples every round after an initial pilot.
-        e_sizes = [int(effort["n_initial"])] + [int(effort["appendix_e_n_per_round"])] * (n_rounds - 1)
-        # Change Method samples only the first and final rounds.
-        c_sizes = [int(effort["appendix_c_n_per_round"])] + [0] * max(0, n_rounds - 2) + [int(effort["appendix_c_n_per_round"])]
+        rounds = len(epidemic["rounds"])
+        regression_sizes = [int(effort["n_initial"])] + [int(effort["regression_method_n_per_round"])] * max(0, rounds - 1)
+        change_sizes = [int(effort["n_initial"])] + [0] * max(0, rounds - 2) + ([int(effort["change_method_n_per_round"])] if rounds > 1 else [])
+        shared_initial = effort.get("pilot_survey", {}).get("sampled_hosts_by_round", [pd.DataFrame()])[0]
         surveys = {
-            "appendix_e": _simx_macro_simulate_surveys(
+            "regression_method": _simx_macro_simulate_surveys(
                 epidemic=epidemic,
-                n_hosts_per_round=e_sizes,
-                sampling_mode=str(spec["sampling_mode"]),
-                overlap_type=str(spec["overlap_type"]),
-                targeted_mode=str(spec["targeted_mode"]),
-                within_cluster_cap=int(spec["within_cluster_cap"]),
-                overlap_prop=float(spec["overlap_prop"]),
-                targeting_level=str(spec["targeting_level"]),
-                rng=np.random.default_rng(int(iter_seed) + 202),
-                method_sens=float(spec["method_sens"]),
+                n_hosts_per_round=regression_sizes,
+                sampling_mode=str(sampling_mode),
+                overlap_type="rotating_panel",
+                targeted_mode=targeted_mode,
+                within_cluster_cap=int(within_cluster_cap),
+                overlap_prop=float(host_resampling_prop),
+                targeting_level=str(targeting_level),
+                rng=np.random.default_rng(int(seed) + 202),
+                method_sens=float(method_sens),
+                initial_sampled_hosts_df=shared_initial,
+                exclude_nonretained_panel_hosts=True,
             ),
-            "appendix_c": _simx_macro_simulate_surveys(
+            "change_method": _simx_macro_simulate_surveys(
                 epidemic=epidemic,
-                n_hosts_per_round=c_sizes,
-                sampling_mode=str(spec["sampling_mode"]),
-                overlap_type=str(spec["overlap_type"]),
-                targeted_mode=str(spec["targeted_mode"]),
-                within_cluster_cap=int(spec["within_cluster_cap"]),
-                overlap_prop=float(spec["overlap_prop"]),
-                targeting_level=str(spec["targeting_level"]),
-                rng=np.random.default_rng(int(iter_seed) + 203),
-                method_sens=float(spec["method_sens"]),
+                n_hosts_per_round=change_sizes,
+                sampling_mode=str(sampling_mode),
+                overlap_type="rotating_panel",
+                targeted_mode=targeted_mode,
+                within_cluster_cap=int(within_cluster_cap),
+                overlap_prop=float(host_resampling_prop),
+                targeting_level=str(targeting_level),
+                rng=np.random.default_rng(int(seed) + 203),
+                method_sens=float(method_sens),
+                initial_sampled_hosts_df=shared_initial,
+                exclude_nonretained_panel_hosts=True,
             ),
         }
-        fit = _simx_fit_methods(epidemic=epidemic, surveys=surveys, model_form=str(spec["regression_model"]))
+        fit = _simx_fit_methods(
+            epidemic=epidemic,
+            surveys=surveys,
+            model_form=str(regression_model),
+        )
+        return {"host": host, "epidemic": epidemic, "effort": effort, "surveys": surveys, "fit": fit}
+
+    def _run_comparison_iteration(
+        scenario_name: str,
+        spec: dict[str, Any],
+        host: dict[str, Any] | None,
+        iter_idx: int,
+        iter_seed: int,
+    ) -> dict[str, Any]:
+        # Use the canonical backend one-iteration engine so the interactive
+        # comparison and production Monte Carlo workflow share the same science.
+        result = _run_scenario_once(
+            seed=int(iter_seed),
+            n_rounds=int(input.simx_n_rounds()),
+            curve_type=str(spec["curve_type"]),
+            p0=float(spec["p0"]),
+            p_end=float(spec["p_end"]),
+            prevalence_shift=float(spec["prevalence_shift"]),
+            host_landscape=host,
+            host_clustering_level=str(spec["host_clustering_level"]),
+            n_clusters=SIMX_DEFAULT_SYNTHETIC_CLUSTERS,
+            total_area_km2=SIMX_DEFAULT_TOTAL_AREA_KM2,
+            host_density_km2=SIMX_DEFAULT_HOST_DENSITY_KM2,
+            infection_clustering_level=str(spec["infection_clustering_level"]),
+            sampling_mode=str(spec["sampling_mode"]),
+            host_resampling_prop=float(spec["host_resampling_prop"]),
+            targeting_level=str(spec["targeting_level"]),
+            within_cluster_cap=int(spec["within_cluster_cap"]),
+            method_sens=float(spec["method_sens"]),
+            cluster_inflation_mode=str(spec["cluster_inflation_mode"]),
+            planning_alpha=float(input.simx_compare_alpha()),
+            planning_power=float(input.simx_compare_power()),
+            change_method_delta=float(spec["change_method_delta"]),
+            regression_method_target=float(spec["regression_method_target"]),
+            regression_model=str(spec["regression_model"]),
+        )
+        epidemic = result["epidemic"]
+        fit = result["fit"]
         true_schedule = epidemic["schedule"].copy()
         true_initial = float(true_schedule["true_prev"].iloc[0])
         true_final = float(true_schedule["true_prev"].iloc[-1])
         true_change = true_final - true_initial
-        true_slope = float(_sim_true_beta_from_schedule(true_schedule))
+        fitted_model = str(fit.get("regression_model", spec["regression_model"]))
+        truth_n = np.full(len(true_schedule), 1_000_000.0, dtype=float)
+        truth_y = np.round(true_schedule["true_prev"].to_numpy(dtype=float) * truth_n)
+        true_beta, _ = _sim_fit_logistic_counts(
+            true_schedule["year"].to_numpy(dtype=float),
+            truth_y,
+            truth_n,
+            model_form=fitted_model,
+        )
+        true_slope = float(true_beta[1]) if len(true_beta) >= 2 and np.isfinite(true_beta[1]) else np.nan
 
         e_df = fit.get("survey_df", pd.DataFrame()).copy()
-        if e_df.empty:
-            reg_final = np.nan
-            reg_change = np.nan
-            reg_slope = np.nan
+        beta_hat = np.asarray(fit.get("regression_beta", np.asarray([], dtype=float)), dtype=float)
+        fit_valid = bool(fit.get("regression_fit_valid", len(beta_hat) >= 2 and np.isfinite(beta_hat).all()))
+        if e_df.empty or len(beta_hat) < 2 or not fit_valid or not np.isfinite(beta_hat).all():
+            reg_final = reg_change = reg_slope = np.nan
         else:
-            beta_hat, _ = _sim_fit_logistic_counts(
-                e_df["year"].to_numpy(dtype=float),
-                e_df["y"].to_numpy(dtype=float),
-                e_df["n"].to_numpy(dtype=float),
-            )
             first_year = float(e_df["year"].min())
             last_year = float(e_df["year"].max())
-            reg_initial = float(_sim_predict_logistic(beta_hat, first_year))
-            reg_final = float(_sim_predict_logistic(beta_hat, last_year))
+            reg_initial = float(_sim_predict_logistic(beta_hat, first_year, model_form=fitted_model))
+            reg_final = float(_sim_predict_logistic(beta_hat, last_year, model_form=fitted_model))
             reg_change = reg_final - reg_initial
             reg_slope = float(beta_hat[1])
 
-        c_df = fit.get("appendix_c_survey_df", pd.DataFrame()).copy()
+        c_df = fit.get("change_method_survey_df", pd.DataFrame()).copy()
         if c_df.empty or "n" not in c_df.columns:
             c_df = pd.DataFrame()
         else:
@@ -888,7 +1099,6 @@ def server(input, output, session):
 
         metric_table = _simx_key_results_table(epidemic, fit).copy()
         metric_table.insert(0, "scenario", scenario_name)
-        # Store error rows in a long table because that is easy to summarise and plot.
         common = {"scenario": scenario_name, "iter": int(iter_idx)}
         error_rows = [
             {**common, "metric": "Final prevalence error", "method": "Change Method", "value": change_final - true_final},
@@ -897,10 +1107,49 @@ def server(input, output, session):
             {**common, "metric": "Change in prevalence error", "method": "Regression Method", "value": reg_change - true_change},
             {**common, "metric": "Regression slope error", "method": "Regression Method", "value": reg_slope - true_slope},
         ]
+        survey_diag = _simx_survey_diagnostics_table(result["surveys"])
+
+        def _diag_value(method: str, column: str) -> float:
+            if survey_diag.empty or column not in survey_diag.columns:
+                return np.nan
+            vals = pd.to_numeric(
+                survey_diag.loc[survey_diag["method"] == method, column],
+                errors="coerce",
+            ).dropna()
+            return float(vals.iloc[-1]) if not vals.empty else np.nan
+
+        def _diag_sum(method: str, column: str) -> float:
+            if survey_diag.empty or column not in survey_diag.columns:
+                return np.nan
+            vals = pd.to_numeric(
+                survey_diag.loc[survey_diag["method"] == method, column],
+                errors="coerce",
+            ).dropna()
+            return float(vals.sum()) if not vals.empty else 0.0
+
+        phi = result["effort"].get("phi", {})
+        diagnostic_rows = [
+            {**common, "metric": "Regression fit valid fraction", "value": float(bool(fit.get("regression_fit_valid", False)))},
+            {**common, "metric": "Regression separation fraction", "value": float(bool(fit.get("regression_separation_suspected", False)))},
+            {**common, "metric": "Regression condition number", "value": float(fit.get("regression_information_condition_number", np.nan))},
+            {**common, "metric": "Design Effect phi", "value": float(phi.get("phi", np.nan))},
+            {**common, "metric": "Pilot ICC rho", "value": float(phi.get("rho", np.nan))},
+            {**common, "metric": "Change planning correlation", "value": float(result["effort"].get("change_method_corr_used", np.nan))},
+            {**common, "metric": "Regression total sample shortfall", "value": _diag_sum("Regression Method", "shortfall")},
+            {**common, "metric": "Change total sample shortfall", "value": _diag_sum("Change Method", "shortfall")},
+            {**common, "metric": "Regression final host overlap", "value": _diag_value("Regression Method", "host_overlap_previous")},
+            {**common, "metric": "Change final host overlap", "value": _diag_value("Change Method", "host_overlap_previous")},
+            {**common, "metric": "Regression final location overlap", "value": _diag_value("Regression Method", "location_overlap_previous")},
+            {**common, "metric": "Change final location overlap", "value": _diag_value("Change Method", "location_overlap_previous")},
+        ]
         return {
             "errors": error_rows,
+            "diagnostics": diagnostic_rows,
             "epidemic": epidemic,
             "fit": fit,
+            "effort": result["effort"],
+            "surveys": result["surveys"],
+            "host": result["host"],
             "metrics": metric_table,
         }
 
@@ -931,14 +1180,21 @@ def server(input, output, session):
                     total_area_km2=float(input.simx_synth_total_area_km2()),
                     host_density_km2=float(input.simx_synth_host_density_km2()),
                     rng=rng,
+                    host_clustering_level=str(input.simx_host_clustering_level()),
                 )
             rv_simx_host.set(host)
             _clear_after_host_or_curve()
             clusters = host.get("clusters", pd.DataFrame())
             n_clusters = int(clusters["cluster_id"].nunique()) if not clusters.empty and "cluster_id" in clusters.columns else 0
-            rv_simx_message.set(
-                f"Host landscape generated: {int(host['total_hosts'])} hosts across {n_clusters} clusters."
-            )
+            if str(input.simx_landscape_source()) == "synthetic":
+                rv_simx_message.set(
+                    f"Host landscape generated: {int(host['total_hosts'])} hosts across {n_clusters} clusters "
+                    f"using {str(input.simx_host_clustering_level()).title()} host clustering."
+                )
+            else:
+                rv_simx_message.set(
+                    f"Host landscape generated: {int(host['total_hosts'])} hosts across {n_clusters} clusters."
+                )
         except Exception as exc:
             rv_simx_message.set(f"Host landscape failed: {exc}")
 
@@ -952,7 +1208,7 @@ def server(input, output, session):
                     curve_type=str(input.simx_curve_type()),
                     p0=float(input.simx_p0()),
                     p_end=float(input.simx_p_end()),
-                    prevalence_shift=0.0,
+                    prevalence_shift=float(input.simx_prevalence_shift()),
                     n_rounds=int(input.simx_n_rounds()),
                 )
             )
@@ -995,21 +1251,22 @@ def server(input, output, session):
             effort = _simx_macro_plan_sampling_effort(
                 epidemic=epidemic,
                 sampling_mode=str(input.simx_sampling_mode()),
-                overlap_type=str(input.simx_overlap_type()),
+                overlap_type="rotating_panel",
                 targeted_mode=_targeted_mode(str(input.simx_survey_targeting())),
                 within_cluster_cap=int(input.simx_within_cluster_cap()),
-                overlap_prop=_overlap_prop(str(input.simx_overlap_type())),
+                overlap_prop=_host_resampling_prop(input.simx_host_resampling_prop()),
                 targeting_level=str(input.simx_survey_targeting()),
                 p0_mode="pilot",
                 assumed_p0=0.5,
-                appendix_alpha=float(input.simx_appendix_alpha()),
-                appendix_power=float(input.simx_appendix_power()),
-                appendix_c_delta=float(input.simx_appendix_c_delta()),
-                appendix_c_corr=float(simx_overlap_corr()),
-                appendix_e_target=float(input.simx_appendix_e_target()),
+                planning_alpha=float(input.simx_planning_alpha()),
+                planning_power=float(input.simx_planning_power()),
+                change_method_delta=float(input.simx_change_method_delta()),
+                change_method_corr=0.0,
+                regression_method_target=float(input.simx_regression_method_target()),
                 cluster_inflation_mode=str(input.simx_cluster_inflation()),
                 fixed_phi=1.0,
                 rng=np.random.default_rng(int(input.simx_effort_seed())),
+                method_sens=float(input.simx_method_sensitivity()),
             )
             rv_simx_effort.set(effort)
             _clear_after_effort()
@@ -1033,32 +1290,38 @@ def server(input, output, session):
                     rv_simx_message.set("Estimate sample sizes before using method-specific sample sizes.")
                     return
                 n_rounds = len(epidemic["rounds"])
-                e_sizes = [int(effort["n_initial"])] + [int(effort["appendix_e_n_per_round"])] * (n_rounds - 1)
-                c_sizes = [int(effort["appendix_c_n_per_round"])] + [0] * max(0, n_rounds - 2) + [int(effort["appendix_c_n_per_round"])]
+                e_sizes = [int(effort["n_initial"])] + [int(effort["regression_method_n_per_round"])] * (n_rounds - 1)
+                c_sizes = [int(effort["n_initial"])] + [0] * max(0, n_rounds - 2) + [int(effort["change_method_n_per_round"])]
+                shared_initial = effort.get("pilot_survey", {}).get("sampled_hosts_by_round", [pd.DataFrame()])[0]
+                resampling = _host_resampling_prop(input.simx_host_resampling_prop())
                 surveys = {
-                    "appendix_e": _simx_macro_simulate_surveys(
+                    "regression_method": _simx_macro_simulate_surveys(
                         epidemic=epidemic,
                         n_hosts_per_round=e_sizes,
                         sampling_mode=str(input.simx_sampling_mode()),
-                        overlap_type=str(input.simx_overlap_type()),
+                        overlap_type="rotating_panel",
                         targeted_mode=_targeted_mode(str(input.simx_survey_targeting())),
                         within_cluster_cap=int(input.simx_within_cluster_cap()),
-                        overlap_prop=_overlap_prop(str(input.simx_overlap_type())),
+                        overlap_prop=resampling,
                         targeting_level=str(input.simx_survey_targeting()),
                         rng=np.random.default_rng(int(input.simx_survey_seed())),
                         method_sens=float(input.simx_method_sensitivity()),
+                        initial_sampled_hosts_df=shared_initial,
+                        exclude_nonretained_panel_hosts=True,
                     ),
-                    "appendix_c": _simx_macro_simulate_surveys(
+                    "change_method": _simx_macro_simulate_surveys(
                         epidemic=epidemic,
                         n_hosts_per_round=c_sizes,
                         sampling_mode=str(input.simx_sampling_mode()),
-                        overlap_type=str(input.simx_overlap_type()),
+                        overlap_type="rotating_panel",
                         targeted_mode=_targeted_mode(str(input.simx_survey_targeting())),
                         within_cluster_cap=int(input.simx_within_cluster_cap()),
-                        overlap_prop=_overlap_prop(str(input.simx_overlap_type())),
+                        overlap_prop=resampling,
                         targeting_level=str(input.simx_survey_targeting()),
                         rng=np.random.default_rng(int(input.simx_survey_seed()) + 1),
                         method_sens=float(input.simx_method_sensitivity()),
+                        initial_sampled_hosts_df=shared_initial,
+                        exclude_nonretained_panel_hosts=True,
                     ),
                 }
                 comparison_sizes = e_sizes
@@ -1068,13 +1331,14 @@ def server(input, output, session):
                         epidemic=epidemic,
                         n_hosts_per_round=int(input.simx_survey_hosts_per_round()),
                         sampling_mode=str(input.simx_sampling_mode()),
-                        overlap_type=str(input.simx_overlap_type()),
+                        overlap_type="rotating_panel",
                         targeted_mode=_targeted_mode(str(input.simx_survey_targeting())),
                         within_cluster_cap=int(input.simx_within_cluster_cap()),
-                        overlap_prop=_overlap_prop(str(input.simx_overlap_type())),
+                        overlap_prop=_host_resampling_prop(input.simx_host_resampling_prop()),
                         targeting_level=str(input.simx_survey_targeting()),
                         rng=np.random.default_rng(int(input.simx_survey_seed())),
                         method_sens=float(input.simx_method_sensitivity()),
+                        exclude_nonretained_panel_hosts=True,
                     )
                 }
                 comparison_sizes = int(input.simx_survey_hosts_per_round())
@@ -1083,25 +1347,27 @@ def server(input, output, session):
                 epidemic=epidemic,
                 n_hosts_per_round=comparison_sizes,
                 sampling_mode=str(input.simx_sampling_mode()),
-                overlap_type=str(input.simx_overlap_type()),
+                overlap_type="rotating_panel",
                 targeted_mode="none",
                 within_cluster_cap=int(input.simx_within_cluster_cap()),
-                overlap_prop=_overlap_prop(str(input.simx_overlap_type())),
+                overlap_prop=_host_resampling_prop(input.simx_host_resampling_prop()),
                 targeting_level="random",
                 rng=np.random.default_rng(int(input.simx_survey_seed()) + 20),
                 method_sens=float(input.simx_method_sensitivity()),
+                exclude_nonretained_panel_hosts=True,
             )
             surveys["targeted_all_rounds"] = _simx_macro_simulate_surveys(
                 epidemic=epidemic,
                 n_hosts_per_round=comparison_sizes,
                 sampling_mode=str(input.simx_sampling_mode()),
-                overlap_type=str(input.simx_overlap_type()),
+                overlap_type="rotating_panel",
                 targeted_mode="defra_targeted",
                 within_cluster_cap=int(input.simx_within_cluster_cap()),
-                overlap_prop=_overlap_prop(str(input.simx_overlap_type())),
+                overlap_prop=_host_resampling_prop(input.simx_host_resampling_prop()),
                 targeting_level=str(input.simx_survey_targeting()),
                 rng=np.random.default_rng(int(input.simx_survey_seed()) + 21),
                 method_sens=float(input.simx_method_sensitivity()),
+                exclude_nonretained_panel_hosts=True,
             )
             rv_simx_surveys.set(surveys)
             rv_simx_fit.set(None)
@@ -1120,13 +1386,19 @@ def server(input, output, session):
             rv_simx_message.set("Generate the infection landscape and surveys before fitting the methods.")
             return
         try:
-            fit_key = "appendix_e" if "appendix_e" in surveys else "static"
+            fit_key = "regression_method" if "regression_method" in surveys else "static"
             fit_surveys = {
-                "appendix_e": surveys[fit_key],
-                "appendix_c": surveys["appendix_c"] if "appendix_c" in surveys else surveys[fit_key],
+                "regression_method": surveys[fit_key],
+                "change_method": surveys["change_method"] if "change_method" in surveys else surveys[fit_key],
             }
-            rv_simx_fit.set(_simx_fit_methods(epidemic=epidemic, surveys=fit_surveys, model_form="logistic"))
-            rv_simx_message.set("Appendix C and Appendix E fitted to the simulated survey outputs.")
+            rv_simx_fit.set(
+                _simx_fit_methods(
+                    epidemic=epidemic,
+                    surveys=fit_surveys,
+                    model_form=str(input.simx_regression_model()),
+                )
+            )
+            rv_simx_message.set("Change Method and Regression Method fitted to the simulated survey outputs.")
         except Exception as exc:
             rv_simx_message.set(f"Method fitting failed: {exc}")
 
@@ -1148,18 +1420,21 @@ def server(input, output, session):
             spec_a = _comparison_spec("simx_a")
             spec_b = _comparison_spec("simx_b")
             rows: list[dict[str, Any]] = []
+            diagnostic_rows: list[dict[str, Any]] = []
             single_run_payload: dict[str, Any] = {}
             rv_simx_message.set(f"Running scenario comparison: 0/{n_iters} runs complete...")
             for i in range(1, n_iters + 1):
                 # Use related random seeds so Scenario A and B are compared
                 # under the same broad random conditions.
                 iter_seed = base_seed + i
-                host_a = _comparison_host(iter_seed)
-                host_b = host_a
+                host_a = _comparison_host(spec_a, iter_seed)
+                host_b = _comparison_host(spec_b, iter_seed)
                 result_a = _run_comparison_iteration("Scenario A", spec_a, host_a, i, iter_seed)
                 result_b = _run_comparison_iteration("Scenario B", spec_b, host_b, i, iter_seed)
                 rows.extend(result_a["errors"])
                 rows.extend(result_b["errors"])
+                diagnostic_rows.extend(result_a["diagnostics"])
+                diagnostic_rows.extend(result_b["diagnostics"])
                 if n_iters == 1:
                     single_run_payload = {"Scenario A": result_a, "Scenario B": result_b}
                 if i == 1 or i == n_iters or i % 25 == 0:
@@ -1168,6 +1443,7 @@ def server(input, output, session):
                 {
                     "mode": "single" if n_iters == 1 else "mc",
                     "errors": pd.DataFrame(rows),
+                    "diagnostics": pd.DataFrame(diagnostic_rows),
                     "single": single_run_payload,
                 }
             )
@@ -1303,7 +1579,7 @@ def server(input, output, session):
         surveys = rv_simx_surveys.get()
         if surveys is None:
             return _simx_plot_macro_survey_landscape(None, "Survey allocation")
-        survey_key = "appendix_e" if "appendix_e" in surveys else "static"
+        survey_key = "regression_method" if "regression_method" in surveys else "static"
         survey_rounds = surveys[survey_key]["rounds"]
         round_idx = max(0, min(simx_display_round_index(), len(survey_rounds) - 1))
         return _simx_plot_macro_survey_landscape(survey_rounds[round_idx], f"Survey allocation: round {round_idx + 1}")
@@ -1336,6 +1612,16 @@ def server(input, output, session):
     @render.data_frame
     def simx_key_results_table():
         return render_grid(_simx_key_results_table(rv_simx_epidemic.get(), rv_simx_fit.get()))
+
+    @output
+    @render.data_frame
+    def simx_survey_diagnostics_table():
+        return render_grid(_simx_survey_diagnostics_table(rv_simx_surveys.get()))
+
+    @output
+    @render.data_frame
+    def simx_fit_diagnostics_table():
+        return render_grid(_simx_fit_diagnostics_table(rv_simx_fit.get(), rv_simx_effort.get()))
 
     @output
     @render.ui
@@ -1466,12 +1752,47 @@ def server(input, output, session):
                 mean_error=("value", "mean"),
                 median_error=("value", "median"),
                 rmse=("value", lambda x: float(np.sqrt(np.nanmean(np.asarray(x, dtype=float) ** 2)))),
+                valid_runs=("value", "count"),
+                total_runs=("value", "size"),
             )
             .sort_values(["metric", "scenario", "method"])
         )
         for col in ["mean_error", "median_error", "rmse"]:
             summary[col] = summary[col].astype(float).round(6)
+        summary["valid_fit_fraction"] = (summary["valid_runs"] / summary["total_runs"]).round(4)
         return render_grid(summary)
+
+    @output
+    @render.data_frame
+    def simx_compare_diagnostics_table():
+        result = rv_simx_compare.get()
+        if not isinstance(result, dict):
+            return render_grid(pd.DataFrame([{"metric": "Comparison diagnostics", "value": "Not yet run"}]))
+        diagnostics = result.get("diagnostics", pd.DataFrame())
+        if not isinstance(diagnostics, pd.DataFrame) or diagnostics.empty:
+            return render_grid(pd.DataFrame([{"metric": "Comparison diagnostics", "value": "Not yet run"}]))
+        diagnostics = diagnostics.copy()
+        diagnostics["value"] = pd.to_numeric(diagnostics["value"], errors="coerce")
+        if result.get("mode") == "single":
+            out = diagnostics.pivot_table(index="metric", columns="scenario", values="value", aggfunc="first").reset_index()
+            for col in out.columns:
+                if col != "metric":
+                    out[col] = pd.to_numeric(out[col], errors="coerce").round(6)
+            return render_grid(out)
+        out = (
+            diagnostics.groupby(["scenario", "metric"], as_index=False)
+            .agg(
+                mean=("value", "mean"),
+                median=("value", "median"),
+                minimum=("value", "min"),
+                maximum=("value", "max"),
+                valid_runs=("value", "count"),
+            )
+            .sort_values(["metric", "scenario"])
+        )
+        for col in ["mean", "median", "minimum", "maximum"]:
+            out[col] = pd.to_numeric(out[col], errors="coerce").round(6)
+        return render_grid(out)
 
 
 app = App(app_ui, server)
